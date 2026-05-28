@@ -1,0 +1,14 @@
+# Core
+gradio>=4.44.0
+transformers>=4.44.0
+torch>=2.1.0
+torchaudio>=2.1.0
+librosa>=0.10.0
+
+# Exporters
+reportlab>=4.0.0
+python-docx>=1.1.0
+
+# Audio decoding backend (Whisper pipeline needs ffmpeg too — see README)
+soundfile>=0.12.1
+sentencepiece>=0.2.0
