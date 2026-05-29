@@ -48,13 +48,18 @@ def _get_rt_transcriber(model_name: str) -> RealtimeTranscriber:
 # File-transcription handlers (Step 1 / 2 / 3)
 # ---------------------------------------------------------------------------
 
-def transcribe_audio(audio_path, model_name, with_timestamps, progress=gr.Progress()):
+def transcribe_audio(audio_path, model_name, with_timestamps, chunk_length_s, stride_length_s, progress=gr.Progress()):
     if not audio_path:
         raise gr.Error("Please upload an audio file or record from the mic first.")
     progress(0.1, desc="Loading model...")
     tr = _get_transcriber(model_name)
     progress(0.4, desc="Transcribing...")
-    text = tr.transcribe(audio_path, return_timestamps=with_timestamps)
+    text = tr.transcribe(
+        audio_path,
+        return_timestamps=with_timestamps,
+        chunk_length_s=int(chunk_length_s),
+        stride_length_s=int(stride_length_s),
+    )
     progress(1.0, desc="Done")
     return text
 
@@ -148,6 +153,20 @@ with gr.Blocks(title="SpeechScribe Edge", theme=gr.themes.Soft()) as demo:
                         value="openai/whisper-small",
                         label="Whisper model (bigger = slower, more accurate)",
                     )
+                    chunk_sl = gr.Slider(
+                        minimum=5,
+                        maximum=60,
+                        value=30,
+                        step=5,
+                        label="Chunk length (s) — audio window per Whisper call",
+                    )
+                    stride_sl = gr.Slider(
+                        minimum=0,
+                        maximum=10,
+                        value=5,
+                        step=1,
+                        label="Stride length (s) — overlap on each side of chunk",
+                    )
                     ts_chk = gr.Checkbox(label="Include timestamps", value=False)
                     transcribe_btn = gr.Button("1 · Transcribe", variant="primary")
 
@@ -179,7 +198,7 @@ with gr.Blocks(title="SpeechScribe Edge", theme=gr.themes.Soft()) as demo:
 
             transcribe_btn.click(
                 transcribe_audio,
-                inputs=[audio_in, model_dd, ts_chk],
+                inputs=[audio_in, model_dd, ts_chk, chunk_sl, stride_sl],
                 outputs=transcript,
             )
             translate_btn.click(

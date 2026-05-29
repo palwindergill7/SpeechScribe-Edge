@@ -28,14 +28,24 @@ class Transcriber:
             model=model,
             tokenizer=processor.tokenizer,
             feature_extractor=processor.feature_extractor,
-            chunk_length_s=30,
             batch_size=16,
             torch_dtype=self.torch_dtype,
             device=self.device,
         )
 
-    def transcribe(self, audio_path: str, return_timestamps: bool = False) -> str:
-        result = self.pipe(audio_path, return_timestamps=return_timestamps)
+    def transcribe(
+        self,
+        audio_path: str,
+        return_timestamps: bool = False,
+        chunk_length_s: int = 30,
+        stride_length_s: int = 5,
+    ) -> str:
+        result = self.pipe(
+            audio_path,
+            return_timestamps=return_timestamps,
+            chunk_length_s=chunk_length_s,
+            stride_length_s=(stride_length_s, stride_length_s),
+        )
         if return_timestamps and "chunks" in result:
             lines = []
             for ch in result["chunks"]:
