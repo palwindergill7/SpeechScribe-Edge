@@ -12,7 +12,7 @@ import gradio as gr
 from transcriber import Transcriber
 from translator import Translator, LANGUAGES
 from exporters import export_file
-from real_time.real_time_transcriber import RealtimeTranscriber, CHUNK_SECONDS
+from real_time.real_time_transcriber import RealtimeTranscriber
 
 # ---------------------------------------------------------------------------
 # Lazy model singletons — loaded on first use, not at startup
@@ -85,7 +85,7 @@ def make_files(text, formats, base_name):
 # Real-time transcription handlers
 # ---------------------------------------------------------------------------
 
-def rt_process_stream(audio_chunk, state, model_name):
+def rt_process_stream(audio_chunk, state, model_name, chunk_seconds, stride_seconds):
     """
     Called by Gradio every ~0.5 s while the microphone is active.
 
@@ -103,13 +103,13 @@ def rt_process_stream(audio_chunk, state, model_name):
 
     buffer = np.concatenate([state["buffer"], data.astype(np.float32)])
 
-    # Run Whisper only once we have CHUNK_SECONDS worth of audio
-    if len(buffer) >= CHUNK_SECONDS * sample_rate:
+    if len(buffer) >= int(chunk_seconds) * sample_rate:
         text = _get_rt_transcriber(model_name).transcribe_chunk(buffer, sample_rate)
         if text:
             sep = " " if state["transcript"] else ""
             state["transcript"] += sep + text
-        buffer = np.array([], dtype=np.float32)
+        stride_samples = int(stride_seconds) * sample_rate
+        buffer = buffer[-stride_samples:] if stride_samples > 0 else np.array([], dtype=np.float32)
 
     state["buffer"] = buffer
     return state["transcript"], state
@@ -214,42 +214,55 @@ with gr.Blocks(title="SpeechScribe Edge", theme=gr.themes.Soft()) as demo:
 
         # ── Tab 2: Real-time Transcription ───────────────────────────────
         with gr.Tab("Real-time Transcription"):
-            gr.Markdown(
-                "Speak into your microphone — Whisper transcribes every "
-                f"{CHUNK_SECONDS} seconds and appends to the transcript below. "
-                "Use **tiny** or **base** for lowest latency."
-            )
-
-            rt_model_dd = gr.Dropdown(
-                choices=[
-                    "openai/whisper-tiny",
-                    "openai/whisper-base",
-                    "openai/whisper-small",
-                ],
-                value="openai/whisper-base",
-                label="Whisper model",
-            )
-
             with gr.Row():
-                rt_mic = gr.Audio(
-                    sources=["microphone"],
-                    streaming=True,
-                    type="numpy",
-                    label="Microphone — click the mic and start speaking",
-                )
-                rt_transcript = gr.Textbox(
-                    label="Live transcript (editable)",
-                    lines=14,
-                    placeholder="Start speaking — text appears here every few seconds.",
-                    interactive=True,
-                )
 
-            rt_clear_btn = gr.Button("Clear transcript")
+                # ── Left: all controls ────────────────────────────────────
+                with gr.Column(scale=1):
+                    rt_model_dd = gr.Dropdown(
+                        choices=[
+                            "openai/whisper-tiny",
+                            "openai/whisper-base",
+                            "openai/whisper-small",
+                        ],
+                        value="openai/whisper-base",
+                        label="Whisper model",
+                    )
+                    rt_chunk_sl = gr.Slider(
+                        minimum=3,
+                        maximum=30,
+                        value=8,
+                        step=1,
+                        label="Chunk length (s) — buffer before transcribing",
+                    )
+                    rt_stride_sl = gr.Slider(
+                        minimum=0,
+                        maximum=6,
+                        value=2,
+                        step=1,
+                        label="Stride length (s) — overlap from previous chunk",
+                    )
+                    rt_mic = gr.Audio(
+                        sources=["microphone"],
+                        streaming=True,
+                        type="numpy",
+                        label="Microphone",
+                    )
+                    rt_clear_btn = gr.Button("Clear transcript")
+
+                # ── Right: transcript (full height) ──────────────────────
+                with gr.Column(scale=2):
+                    rt_transcript = gr.Textbox(
+                        label="Live transcript (editable)",
+                        lines=22,
+                        placeholder="Start speaking — text appears here every few seconds.",
+                        interactive=True,
+                    )
+
             rt_state = gr.State()
 
             rt_mic.stream(
                 rt_process_stream,
-                inputs=[rt_mic, rt_state, rt_model_dd],
+                inputs=[rt_mic, rt_state, rt_model_dd, rt_chunk_sl, rt_stride_sl],
                 outputs=[rt_transcript, rt_state],
             )
             rt_clear_btn.click(
